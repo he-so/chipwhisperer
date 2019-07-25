@@ -25,32 +25,33 @@
 
 from ._base import SimpleSerialTemplate
 import serial
-from chipwhisperer.common.utils import serialport
-
 
 class SimpleSerial_serial(SimpleSerialTemplate):
     _name = "System Serial Port"
 
-    def __init__(self):
+    def __init__(self, portname=None):
         SimpleSerialTemplate.__init__(self)
-        self.ser = None
-        self.params.addChildren([
-            {'name':'Baud', 'key':'baud', 'type':'list', 'values':{'38400':38400, '19200':19200}, 'value':38400},
-            {'name':'Port', 'key':'port', 'type':'list', 'values':['Hit Refresh'], 'value':'Hit Refresh'},
-            {'name':'Refresh', 'type':'action', 'action':self.updateSerial}
-        ])
+        self.ser = serial.Serial(baudrate=38400)
 
-    def updateSerial(self, _=None):
-        serialnames = serialport.scan()
-        self.findParam('port').setLimits(serialnames)
-        if len(serialnames) > 0:
-            self.findParam('port').setValue(serialnames[0])
-
-    def selectionChanged(self):
-        self.updateSerial()
+        if portname:
+            self.set_port(portname)
 
     def debugInfo(self, lastTx=None, lastRx=None, logInfo=None):
         pass
+
+    def baud(self):
+        return self.ser.baudrate
+
+    def set_baud(self, baud):
+        if baud == self.ser.baudrate:
+            return
+        self.ser.baudrate = baud
+        if self.ser.is_open:
+            self.ser.close()
+            self.ser.open()
+
+    def set_port(self, portname):
+        self.ser.port = portnames
 
     def hardware_write(self, string):
         return self.ser.write(bytearray(string.encode('utf-8')))
@@ -67,10 +68,8 @@ class SimpleSerial_serial(SimpleSerialTemplate):
             self.ser = None
 
     def con(self, scope = None):
-        if self.ser == None:
+        if not self.ser.is_open:
             # Open serial port if not already
-            self.ser = serial.Serial()
-            self.ser.port     = self.findParam('port').getValue()
-            self.ser.baudrate = self.findParam('baud').getValue()
+            self.ser.port     = self.portname
             self.ser.timeout  = 2     # 2 second timeout
             self.ser.open()

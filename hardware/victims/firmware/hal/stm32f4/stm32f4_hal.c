@@ -10,12 +10,29 @@
 UART_HandleTypeDef UartHandle;
 
 uint8_t hw_key[16];
-
+static CRYP_HandleTypeDef cryp;
 
 void platform_init(void)
 {
 	//HAL_Init();
 
+#ifdef USE_INTERNAL_CLK
+     RCC_OscInitTypeDef RCC_OscInitStruct;
+     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+     RCC_OscInitStruct.HSEState       = RCC_HSE_OFF;
+     RCC_OscInitStruct.HSIState       = RCC_HSI_ON;
+     RCC_OscInitStruct.PLL.PLLSource  = RCC_PLL_NONE;
+     HAL_RCC_OscConfig(&RCC_OscInitStruct);
+
+     RCC_ClkInitTypeDef RCC_ClkInitStruct;
+     RCC_ClkInitStruct.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+     RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_HSI;
+     RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
+     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+     uint32_t flash_latency = 0;
+     HAL_RCC_ClockConfig(&RCC_ClkInitStruct, flash_latency);
+#else
 	RCC_OscInitTypeDef RCC_OscInitStruct;
 	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_HSI;
 	RCC_OscInitStruct.HSEState       = RCC_HSE_BYPASS;
@@ -30,8 +47,7 @@ void platform_init(void)
 	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 	HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_ACR_LATENCY_5WS);
-	
-	__HAL_RCC_CRYP_CLK_ENABLE();
+#endif
 }
 
 void init_uart(void)
@@ -74,12 +90,12 @@ void trigger_high(void)
 void trigger_low(void)
 {
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, RESET);
-}   
+}
 
 char getch(void)
 {
 	uint8_t d;
-	HAL_UART_Receive(&UartHandle, &d, 1, 5000);
+	while (HAL_UART_Receive(&UartHandle, &d, 1, 5000) != HAL_OK);
 	return d;
 }
 
@@ -89,19 +105,33 @@ void putch(char c)
 	HAL_UART_Transmit(&UartHandle,  &d, 1, 5000);
 }
 
-void HW_AES128_Init()
+void HW_AES128_Init(void)
 {
+	cryp.Instance = CRYP;
+	cryp.Init.DataType = CRYP_DATATYPE_8B;
+	cryp.Init.KeySize = CRYP_KEYSIZE_128B;
+	cryp.Init.pKey = hw_key;
+  HW_AES128_LoadKey(hw_key);
+  __HAL_RCC_CRYP_CLK_ENABLE();
+	HAL_CRYP_Init(&cryp);
 }
 
 void HW_AES128_LoadKey(uint8_t* key)
 {
 	for(int i = 0; i < 16; i++)
 	{
-		hw_key[i] = key[i];
+		cryp.Init.pKey[i] = key[i];
 	}
 }
 
 void HW_AES128_Enc(uint8_t* pt)
 {
-	uint8_t ret = CRYP_AES_ECB(MODE_ENCRYPT, hw_key, 128, pt, 16, pt);
+	HAL_CRYP_Init(&cryp);
+  HAL_CRYP_AESECB_Encrypt(&cryp, pt, 16, pt, 1000);
+}
+
+void HW_AES128_Dec(uint8_t *pt)
+{
+     HAL_CRYP_Init(&cryp);
+     HAL_CRYP_AESECB_Decrypt(&cryp, pt, 16, pt, 1000);
 }

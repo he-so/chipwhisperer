@@ -29,15 +29,96 @@ from chipwhisperer.hardware.naeusb.programmer_avr import supported_avr
 from chipwhisperer.hardware.naeusb.programmer_xmega import supported_xmega
 from chipwhisperer.hardware.naeusb.programmer_stm32fserial import supported_stm32f
 
+from functools import wraps
+
+
+def save_and_restore_pins(func):
+    """Decorator to save and restore pins needed to comunicate and program hardware
+
+        Purpose: to move from changing pins in the background needed to communicate
+         with the hardware and leaving them changed (very confusing), to saving the
+         pin states before the function is called, changing them during function
+         executation and restoring them after the function is done executing
+         (less confusing).
+        """
+    @wraps(func) # updates func_wrapper aatributes to be same
+    def func_wrapper(self, *args, **kwargs):
+
+        #If no scope, we don't do any pin magic
+        if self.scope is None:
+            return func(self, *args, **kwargs)
+
+        pin_setup = {
+            'pdic': self.scope.io.pdic,
+            'pdid': self.scope.io.pdid,
+            'nrst': self.scope.io.nrst,
+        }
+        logging.debug('Saving pdic, pdid, and nrst pin configuration')
+        # setup the pins so that so communication to the target is possible
+        # Important: during the execution of func, the pin values may change if
+        # the function is related to reprogramming or resetting the device. Example:
+        # the stm32f uses the toggling of the nrst and pdic pins for resetting
+        # and boot mode setting respectively
+        logging.debug('Changing pdic, pdid, and nrst pin configuration')
+        if pin_setup['pdic'] != 'high_z':
+            self.scope.io.pdic = 'high_z'
+        if pin_setup['pdid'] != 'high_z':
+            self.scope.io.pdid = 'high_z'
+        if pin_setup['nrst'] != 'high_z':
+            self.scope.io.nrst = 'high_z'
+        try:
+            val = func(self, *args, **kwargs)
+        finally:
+            logging.debug('Restoring pdic, pdid, and nrst pin configuration')
+            if self.scope.io.pdic != pin_setup['pdic']:
+                self.scope.io.pdic = pin_setup['pdic']
+            if self.scope.io.pdid != pin_setup['pdid']:
+                self.scope.io.pdid = pin_setup['pdid']
+            if self.scope.io.nrst != pin_setup['nrst']:
+                self.scope.io.nrst = pin_setup['nrst']
+        return val # only returns value when decorating a function with return value
+    return func_wrapper
+
+
 
 class Programmer(object):
     lastFlashedFile = "unknown"
+    _scope = None
+    pin_setup = {}
 
     def __init__(self):
         self.newTextLog = util.Signal()
+        self._scope = None
+
+    def open(self):
+        pass
+
+    @property
+    def scope(self):
+        if self._scope:
+            return self._scope
+
+        return None
+
+    @scope.setter
+    def scope(self, value):
+        self._scope = value
+
+    def save_pin_setup(self):
+        self.pin_setup['pdic'] = self.scope.io.pdic
+        self.pin_setup['pdid'] = self.scope.io.pdid
+        self.pin_setup['nrst'] = self.scope.io.nrst
+
+    def restore_pin_setup(self):
+        self.scope.io.pdic = self.pin_setup['pdic']
+        self.scope.io.pdid = self.pin_setup['pdid']
+        self.scope.io.nrst = self.pin_setup['nrst']
+
+    def set_pins(self):
+        raise NotImplementedError
 
     def setUSBInterface(self, iface):
-        raise NotImplementedError
+        raise DeprecationWarning('find method now includes what setUSBInterface did')
 
     def find(self):
         raise NotImplementedError
@@ -56,53 +137,92 @@ class Programmer(object):
         logging.info(text)
         self.newTextLog.emit(text)
 
+    def autoProgram(self, hexfile, erase, verify, logfunc, waitfunc):
+        raise NotImplementedError
+
 
 class AVRProgrammer(Programmer):
     def __init__(self):
+        self.slow_clock = False
         super(AVRProgrammer, self).__init__()
-        self.avr = None
 
-    def setUSBInterface(self, iface):
-        self.avr = iface
-        # self.avr.setChip(self.supported_chips[0])
-
+    @save_and_restore_pins
     def find(self):
-        sig, chip = self.avr.find()
+        avr = self.scope.scopetype.dev.avr
+        sig, chip = avr.find(self.slow_clock)
         if chip is None:
             self.log("AVR: Detected unknown device with signature=%2x %2x %2x" % (sig[0], sig[1], sig[2]))
         else:
             self.log("AVR: Detected device %s" % chip.name)
 
+    @save_and_restore_pins
     def erase(self):
+        avr = self.scope.scopetype.dev.avr
         self.log("Erasing Chip")
-        self.avr.eraseChip()
+        avr.eraseChip()
 
+    @save_and_restore_pins
+    def autoProgram(self, hexfile, erase, verify, logfunc, waitfunc):
+        avr = self.scope.scopetype.dev.avr
+        avr.autoProgram(hexfile, erase, verify, logfunc, waitfunc)
+
+    @save_and_restore_pins
+    def writeFuse(self, value, lfuse):
+        avr = self.scope.scopetype.dev.avr
+        avr.writeFuse(value, lfuse)
+
+    @save_and_restore_pins
+    def readFuse(self, value):
+        avr = self.scope.scopetype.dev.avr
+        return avr.readFuse(value)
+
+    @save_and_restore_pins
+    def enableSlowClock(self, value):
+        if value:
+            self.slow_clock = True
+        else:
+            self.slow_clock = False
+        avr = self.scope.scopetype.dev.avr
+        avr.enableSlowClock(value)
+
+    @save_and_restore_pins
     def program(self, filename, memtype="flash", verify=True):
+        avr = self.scope.scopetype.dev.avr
         Programmer.lastFlashedFile = filename
-        self.avr.program(filename, memtype, verify)
-    
+        avr.program(filename, memtype, verify)
+
+    @save_and_restore_pins
+    def autoProgram(self, hexfile, erase, verify, logfunc, waitfunc):
+        avr = self.scope.scopetype.dev.avr
+        avr.autoProgram(hexfile, erase, verify, logfunc, waitfunc)
+
+    @save_and_restore_pins
     def close(self):
+        avr = self.scope.scopetype.dev.avr
         try:
-            if self.avr is not None:
-                self.avr.enableISP(False)
+            avr.enableISP(False)
         except AttributeError as e:
             logging.info("AVR programmer: could not disable ISP - USB might be disconnected!")
-            self.avr = None
 
 
 class XMEGAProgrammer(Programmer):
 
     def __init__(self):
         super(XMEGAProgrammer, self).__init__()
-        self.xmega = None
         self.supported_chips = supported_xmega
+        self.xmega = None
 
-    def setUSBInterface(self, iface):
-        self.xmega = iface
-        self.xmega.setChip(self.supported_chips[0])
+    def xmegaprog(self):
+        if self.xmega is None:
+            xmega = self.scope.scopetype.dev.xmega
+        else:
+            xmega = self.xmega
+        return xmega
 
-    def find(self):
-        sig, chip = self.xmega.find()
+    @save_and_restore_pins
+    def find(self, xmega=None):
+        xmega = self.xmegaprog()
+        sig, chip = xmega.find()
 
         # Print signature of unknown device
         if chip is None:
@@ -110,39 +230,101 @@ class XMEGAProgrammer(Programmer):
         else:
              self.log("Detected %s" % chip.name)
 
+    @save_and_restore_pins
     def erase(self, memtype="chip"):
         self.log("Erasing Chip")
-        self.xmega.erase(memtype)
+        xmega = self.xmegaprog()
+        try:
+            xmega.erase(memtype)
+        except IOError:
+            logging.info("Full chip erase timed out. Reinitializing programmer and erasing only application memory")
+            self.open()
+            self.find()
+            xmega.enablePDI(False)
+            xmega.enablePDI(True)
+            xmega.erase("app")
 
+    @save_and_restore_pins
+    def autoProgram(self, hexfile, erase, verify, logfunc, waitfunc):
+        xmega = self.scope.scopetype.dev.xmega
+        xmega.autoProgram(hexfile, erase, verify, logfunc, waitfunc)
 
+    @save_and_restore_pins
     def program(self, filename, memtype="flash", verify=True):
         Programmer.lastFlashedFile = filename
-        self.xmega.program(filename, memtype, verify)
+        xmega = self.xmegaprog()
+        xmega.program(filename, memtype, verify)
 
+    @save_and_restore_pins
     def close(self):
-        self.xmega.enablePDI(False)
-
+        xmega = self.xmegaprog()
+        xmega.enablePDI(False)
 
 class STM32FProgrammer(Programmer):
 
-    def __init__(self):
+    def __init__(self, small_blocks=False, slow_prog=False, baud=115200):
         super(STM32FProgrammer, self).__init__()
-        self.stm32 = None
         self.supported_chips = supported_stm32f
+        self._baud = baud
 
-    def setUSBInterface(self, iface):
-        self.stm32 = iface
-        self.stm32.setChip(self.supported_chips[0])
+        self.slow_speed = slow_prog
+        self.small_blocks = small_blocks
+        self.stm = None
 
-    def open_and_find(self):
-        self.stm32.open_port()
-        sig, chip = self.stm32.find()
+    def stm32prog(self):
 
-        # Print signature of unknown device
-        if chip is None:
-            self.log("Detected Unknown Chip, sig=%3x"% (sig))
+        if self.stm is None:
+            stm = self.scope.scopetype.dev.serialstm32f
         else:
-             self.log("Detected %s" % chip.name)
+            stm = self.stm
 
+        stm.slow_speed = self.slow_speed
+        stm.small_blocks = self.small_blocks
+
+        return stm
+
+    @save_and_restore_pins
+    def open_and_find(self, log_func=None):
+        stm32f = self.stm32prog()
+        stm32f.open_port()
+        sig, chip = stm32f.find(logfunc=log_func)
+
+        # logging is done at the lower level
+
+    @save_and_restore_pins
+    def open(self):
+        stm32f = self.stm32prog()
+        stm32f.open_port(self._baud)
+
+    @save_and_restore_pins
+    def find(self):
+        stm32f = self.stm32prog()
+        stm32f.scope = self.scope
+        sig, chip = stm32f.find()
+
+        # logging is done at the lower level
+
+    @save_and_restore_pins
+    def program(self, filename, memtype="flash", verify=True):
+        Programmer.lastFlashedFile = filename
+        stm32f = self.stm32prog()
+        stm32f.scope = self.scope
+        stm32f.program(filename, memtype, verify)
+
+    @save_and_restore_pins
+    def autoProgram(self, hexfile, erase, verify, logfunc, waitfunc):
+        stm32f = self.stm32prog()
+        stm32f.scope = self.scope
+        stm32f.autoProgram(hexfile, erase, verify, logfunc, waitfunc)
+
+    @save_and_restore_pins
+    def erase(self):
+        self.log("Erasing Chip")
+        stm32f = self.stm32prog()
+        stm32f.cmdEraseMemory()
+
+    @save_and_restore_pins
     def close(self):
-        self.stm32.close_port()
+        stm32f = self.stm32prog()
+        stm32f.close_port()
+        stm32f.releaseChip()

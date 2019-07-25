@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2014-2016, NewAE Technology Inc
+# Copyright (c) 2014-2018, NewAE Technology Inc
 # All rights reserved.
 #
 # Find this and more at newae.com - this file is part of the chipwhisperer
@@ -23,7 +23,7 @@
 #==========================================================================
 import logging, os, time
 from datetime import datetime
-from naeusb import packuint32
+from .naeusb import packuint32
 from chipwhisperer.capture.utils.programming_files import FileReader
 
 XMEGAMEM_TYPE_APP = 1
@@ -87,10 +87,24 @@ class XMEGA128D4(object):
        "fuse5":{"offset":0x8f0025, "size":1},
      }
 
-supported_xmega = [XMEGA128A4U(), XMEGA128D4(), XMEGA16A4()]
+class XMEGA128A3U(object):
+    signature = [0x1e, 0x97, 0x42]
+    name = "XMEGA128A3U"
+
+    memtypes = {
+       "signature":{"offset":0x1000090, "size":3},
+       "flash":{"offset":0x0800000, "size":0x00022000, "pagesize":0x100, "type":XMEGAMEM_TYPE_APP},
+       "eeprom":{"offset":0x08c0000, "size":0x0800, "pagesize":0x20, "readsize":0x100, "type":XMEGAMEM_TYPE_EEPROM},
+       "fuse1":{"offset":0x8f0021, "size":1},
+       "fuse2":{"offset":0x8f0022, "size":1},
+       "fuse4":{"offset":0x8f0024, "size":1},
+       "fuse5":{"offset":0x8f0025, "size":1},
+     }
+
+supported_xmega = [XMEGA128A4U(), XMEGA128D4(), XMEGA16A4(), XMEGA128A3U()]
 
 def print_fun(s):
-    print s
+    print(s)
 
 class XMEGAPDI(object):
     """
@@ -157,7 +171,7 @@ class XMEGAPDI(object):
 
 #### HIGH LEVEL FUNCTIONS
     def find(self):
-        self.setParamTimeout(400)
+        self.setParamTimeout(100)
         self.enablePDI(True)
 
         # Read signature bytes
@@ -221,7 +235,7 @@ class XMEGAPDI(object):
 
                 status = "SUCCEEDED"
 
-            except IOError, e:
+            except IOError as e:
                 if logfunc: logfunc("FAILED: %s" % str(e))
                 try:
                     self.close()
@@ -326,9 +340,9 @@ class XMEGAPDI(object):
         # start = 0
         # end = endptsize
 
-        if "readsize" in memspec.keys():
+        if "readsize" in list(memspec.keys()):
             readsize = memspec["readsize"]
-        elif "pagesize" in memspec.keys():
+        elif "pagesize" in list(memspec.keys()):
             readsize = memspec["pagesize"]
         else:
             readsize = dlen
@@ -437,7 +451,7 @@ class XMEGAPDI(object):
 
             # Copy internal buffer to final location (probably FLASH memory)
 
-            if not ("type" in memspec.keys()):
+            if not ("type" in list(memspec.keys())):
                 raise IOError("Write on memory type that doesn't have 'type', probably read-only?")
 
             # Do write into memory type
@@ -481,7 +495,7 @@ class XMEGAPDI(object):
         """
 
         # windex selects interface
-        self._usb.usbdev().ctrl_transfer(0x41, self.CMD_XMEGA_PROGRAM, cmd, 0, data, timeout=self._timeout)
+        self._usb.sendCtrl(self.CMD_XMEGA_PROGRAM, cmd, data)
 
         # Check status
         if checkStatus:
@@ -494,4 +508,4 @@ class XMEGAPDI(object):
         Read the result of some command.
         """
         # windex selects interface, set to 0
-        return self._usb.usbdev().ctrl_transfer(0xC1, self.CMD_XMEGA_PROGRAM, cmd, 0, dlen, timeout=self._timeout)
+        return self._usb.readCtrl(self.CMD_XMEGA_PROGRAM, cmd, dlen)

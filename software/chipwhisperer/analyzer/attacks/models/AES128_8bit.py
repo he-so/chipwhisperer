@@ -29,9 +29,9 @@ import inspect
 
 from chipwhisperer.analyzer.attacks.models.aes.funcs import sbox, inv_sbox, subbytes, inv_subbytes, mixcolumns, inv_mixcolumns, shiftrows, inv_shiftrows
 
-from base import ModelsBase
-from chipwhisperer.analyzer.attacks.models.aes.key_schedule import keyScheduleRounds
-from chipwhisperer.common.utils.pluginmanager import Plugin
+from .base import ModelsBase
+from chipwhisperer.analyzer.attacks.models.aes.key_schedule import key_schedule_rounds
+from chipwhisperer.common.utils.util import camel_case_deprecated
 
 class AESLeakageHelper(object):
 
@@ -76,9 +76,9 @@ class AESLeakageHelper(object):
         """Helper function: performs AES inv-shiftrows on all bytes of state"""
         return inv_shiftrows(state)
 
-    def keyScheduleRounds(self, inputkey, inputround, desiredround):
+    def key_schedule_rounds(self, inputkey, inputround, desiredround):
         """Helper function: takes AES key from one round to another round-eky """
-        return keyScheduleRounds(inputkey, inputround, desiredround)
+        return key_schedule_rounds(inputkey, inputround, desiredround)
 
     def xtime(self, a):
         """Helper function: xtime operation (normally used in software AES)"""
@@ -125,6 +125,19 @@ class InvSBox_output(AESLeakageHelper):
     def leakage(self, pt, ct, key, bnum):
         return self.inv_sbox(pt[bnum] ^ key[bnum])
 
+class LastroundHW(AESLeakageHelper):
+    name = 'HW: AES Last-Round State'
+    def leakage(self, pt, ct, key, bnum):
+        # HD Leakage of AES State between 9th and 10th Round
+        # Used to break SASEBO-GII / SAKURA-G
+        st10 = ct[self.INVSHIFT_undo[bnum]]
+        st9 = inv_sbox(ct[bnum] ^ key[bnum])
+        return st9
+
+    def processKnownKey(self, inpkey):
+        return key_schedule_rounds(inpkey, 0, 10)
+
+
 class LastroundStateDiff(AESLeakageHelper):
     name = 'HD: AES Last-Round State'
     c_model_enum_value = 2
@@ -137,7 +150,20 @@ class LastroundStateDiff(AESLeakageHelper):
         return (st9 ^ st10)
 
     def processKnownKey(self, inpkey):
-        return keyScheduleRounds(inpkey, 0, 10)
+        return key_schedule_rounds(inpkey, 0, 10)
+
+class LastroundStateDiffAlternate(AESLeakageHelper):
+    name = 'HD: AES Last-Round State Alternate'
+    def leakage(self, pt, ct, key, bnum):
+        # Alternate leakage
+        st10 = ct[bnum]
+        st9 = inv_sbox(ct[bnum] ^ key[bnum])
+        return (st9 ^ st10)
+
+    def processKnownKey(self, inpkey):
+        k = key_schedule_rounds(inpkey, 0, 10)
+        k = self.shiftrows(k)
+        return k
 
 class SBoxInOutDiff(AESLeakageHelper):
     name = 'HD: AES SBox Input to Output'
@@ -193,6 +219,14 @@ class Mixcolumns_output(AESLeakageHelper):
         state = self.mixcolumns(state)
         return state[bnum]
 
+class ShiftColumns_output(AESLeakageHelper):
+    name = 'HW: AES ShiftColumns Output'
+    def leakage(self, pt, ct, key, bnum):
+        state = [pt[i] ^ key[i] for i in range(0, 16)]
+        state = self.subbytes(state)
+        state = self.shiftrows(state)
+        return state[bnum]
+
 class Round1Round2StateDiff_Text(AESLeakageHelper):
     name = 'HD: AES Round1/Round2 State diff for text'
     def leakage(self, pt, ct, key, bnum):
@@ -212,7 +246,7 @@ class Round1Round2StateDiff_KeyMix(AESLeakageHelper):
         state = self.shiftrows(state)
         state = self.mixcolumns(state)
 
-        key2 = self.keyScheduleRounds(key, 0, 1)
+        key2 = self.key_schedule_rounds(key, 0, 1)
         state = [state[i] ^ key2[i] for i in range(0, 16)]
 
         return state[bnum] ^ state1[bnum]
@@ -226,19 +260,25 @@ class Round1Round2StateDiff_SBox(AESLeakageHelper):
         state = self.shiftrows(state)
         state = self.mixcolumns(state)
 
-        key2 = self.keyScheduleRounds(key, 0, 1)
+        key2 = self.key_schedule_rounds(key, 0, 1)
         state = [state[i] ^ key2[i] for i in range(0, 16)]
         state = subbytes(state)
         return state[bnum] ^ state1[bnum]
 
 #List of all classes you can use
-enc_list = [SBox_output, PtKey_XOR, SBoxInputSuccessive, SBoxInOutDiff, LastroundStateDiff, SBoxOutputSuccessive, Mixcolumns_output, Round1Round2StateDiff_Text, Round1Round2StateDiff_KeyMix, Round1Round2StateDiff_SBox]
+enc_list = [SBox_output, PtKey_XOR, SBoxInputSuccessive, SBoxInOutDiff, LastroundStateDiff, LastroundStateDiffAlternate, SBoxOutputSuccessive, ShiftColumns_output, Mixcolumns_output, Round1Round2StateDiff_Text, Round1Round2StateDiff_KeyMix, Round1Round2StateDiff_SBox]
 dec_list = [InvSBox_output]
 
-class AES128_8bit(ModelsBase, Plugin):
+class AES128_8bit(ModelsBase):
+    """Leakage model for AES128 attacks.
+
+    Make sure to set the actual leakage model (i.e. SBox_Output)
+    """
     _name = 'AES 128'
 
     hwModels = OrderedDict((mod.name, mod) for mod in (enc_list+dec_list) )
+
+    hw_models = OrderedDict((mod.__name__, mod) for mod in (enc_list+dec_list))
 
     def __init__(self, model=SBox_output, bitmask=0xFF):
         ModelsBase.__init__(self, 16, 256, model=model)
@@ -273,6 +313,18 @@ class AES128_8bit(ModelsBase, Plugin):
         return inpkey
 
     def leakage(self, pt, ct, guess, bnum, state):
+        """ Leakage as set by model
+
+        Args:
+            pt (list): Plaintext/textin
+            ct (list): Ciphertext/textout
+            guess (list): Key guess
+            bnum (list): Subkey Byte Number
+            state (list): The state of the key finding
+
+        Returns:
+            A hamming weight (int)
+        """
         try:
             #Make a copy so we don't screw with anything...
             key = list(state['knownkey'])
@@ -295,5 +347,17 @@ class AES128_8bit(ModelsBase, Plugin):
         #Return HW of guess
         return self.HW[intermediate_value]
 
-    def keyScheduleRounds(self, inputkey, inputround, desiredround):
-        return keyScheduleRounds(inputkey, inputround, desiredround)
+    def key_schedule_rounds(self, inputkey, inputround, desiredround):
+        """Changes the round of inputkey from inputround to desiredround
+
+        Args:
+            inputkey (list): key that you want to change the round of
+            inputround (int): Round that inputkey is currently in
+            desiredround (int): Round that you want inputkey to be in
+
+        Returns:
+            desired key (list)
+        """
+        return key_schedule_rounds(inputkey, inputround, desiredround)
+
+    keyScheduleRounds = camel_case_deprecated(key_schedule_rounds)

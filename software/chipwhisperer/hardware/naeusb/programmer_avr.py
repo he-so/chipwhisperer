@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (c) 2014-2016, NewAE Technology Inc
+# Copyright (c) 2014-2018, NewAE Technology Inc
 # All rights reserved.
 #
 # Find this and more at newae.com - this file is part of the chipwhisperer
@@ -26,7 +26,7 @@ from datetime import datetime
 from chipwhisperer.common.utils import util
 from chipwhisperer.capture.utils.IntelHex import IntelHex
 
-from naeusb import packuint32
+from .naeusb import packuint32
 
 # NOTE: These objects are currently manually maintained. Eventually it will be automatically created
 #      from avrdude.conf, but I'd like to test with a few more devices before doing that.
@@ -143,7 +143,7 @@ class ATMega2564RFR2(AVRBase):
 supported_avr = [ATMega328P(), ATMega328(), ATMega168A(), ATMega168PA(), ATMega88A(), ATMega88PA(), ATMega48A(), ATMega48PA(), ATMega128RFA1(), ATMega2564RFR2()]
 
 def print_fun(s):
-    print s
+    print(s)
 
 class AVRISP(object):
 
@@ -225,14 +225,14 @@ class AVRISP(object):
         self._chip = supported_avr[0]
 
     # High-level interface
-    def find(self):
+    def find(self, slow_delay = False):
         # Attempts to find a connected AVR device
         # Returns a pair of (signature, device)
         #   Signature: list of 3 bytes
         #   Device: an AVR device class or None (if unknown device found)
 
         # Read signature
-        self.enableISP(True)
+        self.enableISP(True, slow_delay)
         sig = self.readSignature()
 
         # Compare to our known signatures
@@ -309,7 +309,7 @@ class AVRISP(object):
 
                 status = "SUCCEEDED"
 
-            except IOError, e:
+            except IOError as e:
                 if logfunc: logfunc("FAILED: %s" % str(e))
                 try:
                     self.enableISP(False)
@@ -332,7 +332,7 @@ class AVRISP(object):
         """
 
         # windex selects interface
-        self._usb.usbdev().ctrl_transfer(0x41, self.CMD_AVR_PROGRAM, cmd, 0, data, timeout=self._timeout)
+        self._usb.sendCtrl(self.CMD_AVR_PROGRAM, cmd, data)
 
         # Check status
         if checkStatus:
@@ -349,11 +349,11 @@ class AVRISP(object):
         Read the result of some command.
         """
         # windex selects interface, set to 0
-        return self._usb.usbdev().ctrl_transfer(0xC1, self.CMD_AVR_PROGRAM, cmd, 0, dlen, timeout=self._timeout)
+        return self._usb.readCtrl(self.CMD_AVR_PROGRAM, cmd, dlen)
 
     # Low-level functions
 
-    def enableISP(self, status):
+    def enableISP(self, status, slow_clock=False):
         """
         Enable or disable ISP interface and prepare AVR chip for new status, either entering or exiting
         programming mode.
@@ -364,6 +364,16 @@ class AVRISP(object):
         if status:
             util.chipwhisperer_extra.cwEXTRA.setAVRISPMode(status)
             time.sleep(0.1)
+
+            if slow_clock:
+                self._chip.timeout = 20
+                self._chip.stabdelay = 10
+                self._chip.cmdexedelay = 2
+            else:
+                # fix Sam3u delays for fast clock
+                self._chip.timeout = 200
+                self._chip.stabdelay = 100
+                self._chip.cmdexedelay = 25
             self._avrDoWrite(self.ISP_CMD_ENTER_PROGMODE_ISP, [self._chip.timeout, self._chip.stabdelay, self._chip.cmdexedelay, self._chip.synchloops,
                                                                self._chip.bytedelay, self._chip.pollvalue, self._chip.pollindex, 0xAC, 0x53, 0, 0])
         else:
@@ -595,6 +605,6 @@ class AVRISP(object):
 
     def enableSlowClock(self, enabled):
         if enabled:
-            self._usb.usbdev().ctrl_transfer(0x41, self.CMD_SAM3U_CFG, 0x01, 0, timeout=self._timeout)
+            self._usb.sendCtrl(self.CMD_SAM3U_CFG, 0x01)
         else:
-            self._usb.usbdev().ctrl_transfer(0x41, self.CMD_SAM3U_CFG, 0x02, 0, timeout=self._timeout)
+            self._usb.sendCtrl(self.CMD_SAM3U_CFG, 0x02)

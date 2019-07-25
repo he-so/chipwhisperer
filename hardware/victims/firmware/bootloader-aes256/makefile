@@ -17,7 +17,7 @@
 # make program = Download the hex file to the device, using avrdude.
 #                Please customize the avrdude settings below first!
 #
-# make debug = Start either simulavr or avarice as specified for debugging, 
+# make debug = Start either simulavr or avarice as specified for debugging,
 #              with avr-gdb or avr-insight as the front end for debugging.
 #
 # make filename.s = Just compile filename.c into the assembler code only.
@@ -28,23 +28,18 @@
 # To rebuild project do "make clean" then "make all".
 #----------------------------------------------------------------------------
 
-# Target file name (without extension). 
+# Target file name (without extension).
 # This is the name of the compiled .hex file.
 TARGET = bootloader-aes256
 
 # List C source files here.
 # Header files (.h) are automatically pulled in.
-SRC += bootloader.c aes256.c 
+SRC += bootloader.c aes256.c crcccitt.c
 
 CRYPTO_TARGET = NONE
 CRYPTO_OPTIONS = NONE
 
 # -----------------------------------------------------------------------------
-
-ifeq ($(CRYPTO_TARGET),)
-CRYPTO_TARGET = AVRCRYPTOLIB
-endif
-
 ifeq ($(CRYPTO_OPTIONS),)
 CRYPTO_OPTIONS = AES128C
 endif
