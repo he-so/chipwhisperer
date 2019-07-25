@@ -166,9 +166,11 @@ following, adjusting paths as needed:
 
 .. code:: bash
 
-	cd chipwhisperer/software
-	pip install -r requirements.txt
+	cd chipwhisperer
 	python setup.py develop
+
+    # to be able to run jupyter and the tutorials
+    pip install -r jupyter/requirements.txt
 
 
 To test, run python and try importing the chipwhisperer module:
@@ -221,12 +223,13 @@ If you have Git already set up, this is easy to do:
     git clone https://github.com/newaetech/chipwhisperer.git
     cd chipwhisperer
 
-    cd software
-    python setup.py develop --user
-
     # To get the jupyter notebook tutorials
     git submodule update --init jupyter
     pip install -r jupyter/requirements.txt
+
+    # note the setup.py used to be in software, it was moved
+    # in version 5.1.0
+    python setup.py develop
 
 The user flag installs ChipWhisperer in the user's local python
 site-packages directory.
@@ -240,6 +243,6 @@ you need it:
     cd ..
     git submodule update --init openadc
     cd openadc/controlsw/python
-    python setup.py develop --user
+    python setup.py develop
 
 Once ChipWhisperer is installed, you can :ref:`run chipwhisperer <starting>`.
