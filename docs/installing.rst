@@ -47,10 +47,19 @@ the correct extension pack is installed.
  * Download a ChipWhisperer virtual machine image release or build it
    yourself using Vagrant.
 
- * Unzip the VirtualBox image, go to Machine>Add in VirtualBox and select
+ * Unzip the VirtualBox image, go to *Machine* > *Add* in VirtualBox and select
    the VM that was unzipped.
 
  * Verify that the VM boots.
+
+.. note:: If you are on linux you need to add yourself to the *vboxusers*
+    permission group using, so Virtual Box is given permission to access
+    usb devices::
+
+        sudo usermod -aG vboxusers <your username>
+
+    Then refresh the groups by restarting your computer or logging out and in
+    again.
 
 Next, we'll need to update some passwords for the VM. Boot the virtual
 machine then:
@@ -88,8 +97,13 @@ the Jupyter Notebook server running in the virtual machine.
 ChipWhisperer
 *************
 
-.. note:: You must have the pre-requisites for your system installed
+.. note:: You must have the :ref:`prerequisites` for your system installed
 	before continuing with the installation of the repository.
+
+.. note:: You may have to replace all the calls to **python** on the command line with
+    whatever gives you access to the python version you installed. On GNU/Linux you will
+    probably use **python3**, or you can use the full path to the python interpreter.
+    It is not required but recommended to use a virtual environment.
 
 After satisfying prerequisites for your system, install the ChipWhisperer
 repository/package using one of:
@@ -123,20 +137,23 @@ become your ChipWhisperer working directory. For example, on Windows, you might
 want to use *C:\\chipwhisperer\\*.
 
 Once you've got the file, install the python dependencies and run the Python
-install procedure (setup.py). Use the develop command to indicate that the files
-will probably be changing frequently. to do this, open a terminal and run the
-following, adjusting paths as needed:
+install procedure (setup.py) using pip. Use the -e flag for develop mode to indicate
+that the files will probably be changing frequently. To do this, open a terminal and run
+the following, adjusting paths as needed:
 
 .. code:: bash
 
-	cd chipwhisperer
-	python setup.py develop
+    cd chipwhisperer
+    python -m pip install -e . --user
 
     # to be able to run jupyter and the tutorials
-    pip install -r jupyter/requirements.txt
+    pip install -r jupyter/requirements.txt --user
+
+    # enable jpyter interactive widgets
+    jupyter nbextension enable --py widgetsnbextension
 
 
-To test, run python and try importing the chipwhisperer module:
+To test, run python and try importing the **chipwhisperer** module:
 
 .. code:: python
 
@@ -145,6 +162,8 @@ To test, run python and try importing the chipwhisperer module:
 If you want to run the tutorials you can now start the
 :ref:`Jupyter Notebook server <starting>`.
 
+
+.. _releases: https://github.com/newaetech/chipwhisperer/releases
 
 .. _install-repo-pypi:
 
@@ -188,11 +207,16 @@ If you have Git already set up, this is easy to do:
 
     # To get the jupyter notebook tutorials
     git submodule update --init jupyter
-    pip install -r jupyter/requirements.txt
+    python -m pip install -r jupyter/requirements.txt --user
+
+    # enable jpyter interactive widgets
+    jupyter nbextension enable --py widgetsnbextension
 
     # note the setup.py used to be in software, it was moved
     # in version 5.1.0
-    python setup.py develop
+
+    # use pip to install in develop mode
+    python -m pip install -e . --user
 
 The user flag installs ChipWhisperer in the user's local python
 site-packages directory.
@@ -206,6 +230,6 @@ you need it:
     cd ..
     git submodule update --init openadc
     cd openadc/controlsw/python
-    python setup.py develop
+    python -m pip install -e . --user
 
 Once ChipWhisperer is installed, you can :ref:`run chipwhisperer <starting>`.

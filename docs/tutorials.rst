@@ -16,6 +16,11 @@ This page covers all the tutorials currently available in the latest version of
 ChipWhisperer. These tutorials are all in the form of Jupyter notebooks with
 the output generated to follow along.
 
+.. note:: If you are not yet sure how to start a Jupyter Notebook server, and
+    want to follow along with the tutorials in your own notebook read the
+    :ref:`starting` page (it contains recommend reading). If you just want to
+    check out the tutorials continue on.
+
 You may notice that the page style does not look like your jupyter
 notebook. This is to keep the page style consistent on this website. The
 structure is equivalent. You can identify the jupyter notebooks inputs and
@@ -331,6 +336,7 @@ Supported Targets:
 
   * :ref:`XMEGA <tutorial-pa_profiling_1-openadc-cwlitexmega>`
   * :ref:`ARM (STM32F3) <tutorial-pa_profiling_1-openadc-cwlitearm>`
+  * :ref:`ChipWhisperer Nano <tutorial-pa_profiling_1-cwnano-cwnano>`
 
 
 .. _tutorials-pa-tvla:
