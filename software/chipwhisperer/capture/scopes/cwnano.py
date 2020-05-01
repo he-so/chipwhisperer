@@ -48,6 +48,7 @@ import datetime
 class ADCSettings(util.DisableNewAttr):
     USB_ADCLK_SET = 0x28
     USB_SAMPLES = 0x2A
+    USB_SAMPLES_OFFSET = 0x2E
 
 
     def __init__(self, usb):
@@ -59,6 +60,7 @@ class ADCSettings(util.DisableNewAttr):
         dict['clk_src'] = self.clk_src
         dict['clk_freq'] = self.clk_freq
         dict['samples'] = self.samples
+        dict['samples_offset'] = self.samples_offset
         return dict
 
     def __repr__(self):
@@ -79,6 +81,19 @@ class ADCSettings(util.DisableNewAttr):
 
         nresp = packuint32(numsamples)
         self.usb.sendCtrl(self.USB_SAMPLES, 0, nresp)
+
+    @property
+    def samples_offset(self):
+        """Number of samples to store."""
+
+        resp = self.usb.readCtrl(self.USB_SAMPLES_OFFSET, 0, 4)
+        return unpackuint32(resp)
+
+    @samples_offset.setter
+    def samples_offset(self, numsamples):
+
+        nresp = packuint32(numsamples)
+        self.usb.sendCtrl(self.USB_SAMPLES_OFFSET, 0, nresp)
 
 
     @property
