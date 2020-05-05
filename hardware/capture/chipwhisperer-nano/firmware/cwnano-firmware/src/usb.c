@@ -139,6 +139,8 @@ bool usb_is_enabled(void)
 #define REQ_BUFSIZE 0x2B
 #define REQ_GLITCHSET 0x2C
 #define REQ_GLITCHGO 0x2D
+#define REQ_SAMPLES_OFFSET 0x2E
+
 
 uint32_t max_buffer_size = SIZE_BUFF_RECEPT;
 
@@ -424,6 +426,20 @@ static void ctrl_samples_cb(void)
 	capture_req_length  = *(CTRLBUFFER_WORDPTR);
 }
 
+static void ctrl_samples_offset_cb(void)
+{
+	//Catch heartbleed-style error
+	if (udd_g_ctrlreq.req.wLength > udd_g_ctrlreq.payload_size){
+		return;
+	}
+	
+	if (udd_g_ctrlreq.req.wLength != 4){
+		return;
+	}
+	
+	capture_offset_req_length  = *(CTRLBUFFER_WORDPTR);
+}
+
 uint32_t glitch_offset;
 uint32_t glitch_width;
 
@@ -501,7 +517,11 @@ bool main_setup_out_received(void)
 		case REQ_SAMPLES:
 			udd_g_ctrlreq.callback = ctrl_samples_cb;
 			return true;
-			
+
+		case REQ_SAMPLES_OFFSET:
+			udd_g_ctrlreq.callback = ctrl_samples_offset_cb;
+			return true;			
+
 		case REQ_GLITCHSET:
 			udd_g_ctrlreq.callback = ctrl_glitch_settings;
 			return true;
@@ -621,6 +641,12 @@ bool main_setup_in_received(void)
 		case REQ_SAMPLES:
 			udd_g_ctrlreq.payload = (uint8_t *)&capture_req_length;
 			udd_g_ctrlreq.payload_size = sizeof(capture_req_length);
+			return true;
+			break;
+
+		case REQ_SAMPLES_OFFSET:
+			udd_g_ctrlreq.payload = (uint8_t *)&capture_offset_req_length;
+			udd_g_ctrlreq.payload_size = sizeof(capture_offset_req_length);
 			return true;
 			break;
 			

@@ -48,7 +48,7 @@ void pin_edge_handler(const uint32_t id, const uint32_t mask);
 #define PIO_IRQ_PRI                    (4)
 
 /** PIO receive buffer. */
-uint8_t pio_rx_buffer[SIZE_BUFF_RECEPT];
+uint8_t pio_rx_buffer[ ];
 
 /** Test if a callback is received. */
 volatile uint8_t g_uc_cbk_received = 0;
@@ -98,21 +98,27 @@ void pin_edge_handler(const uint32_t id, const uint32_t mask)
 {
 	if ((id == ID_PIOA) && (mask == PIO_CAPTURE_EN2_MASK)){
 	
+		LED_On(LED3_GPIO);
+	
+		// skip offset
+		gpio_set_pin_low(PIO_CAPTURELATCH_nRESET);
+		delay_ms(capture_offset_req_length);
+		gpio_set_pin_high(PIO_CAPTURELATCH_nRESET);
+	
 		/* Force output high */
 		gpio_set_pin_low(PIO_CAPTURELATCH_nSET);
 		
 		/* Disable interrupt now */
 		pio_disable_interrupt(PIOA, PIO_CAPTURE_EN2_MASK);
 		
-		LED_On(LED3_GPIO);
 	}
 }
 
 uint32_t capture_req_length = SIZE_BUFF_RECEPT;
+uint32_t capture_offset_req_length = 0;
 
 void adc_capture_start(void)
 {
-	
 	static pdc_packet_t * packet0p;
 	static pdc_packet_t * packet1p;
 	
@@ -125,7 +131,7 @@ void adc_capture_start(void)
 
 	g_uc_cbk_received = 0;
 	
-	if (capture_req_length > SIZE_BUFF_RECEPT){
+	if (capture_req_length >  SIZE_BUFF_RECEPT){
 		capture_req_length = SIZE_BUFF_RECEPT;
 	}
 	
@@ -142,20 +148,19 @@ void adc_capture_start(void)
 		packet1.ul_size = capture_req_length - (uint32_t)0xFFFF;
 		packet1p = &packet1;
 	}
-		
-		
+
 	p_pdc = pio_capture_get_pdc_base(PIOA);
 	pdc_rx_init(p_pdc, packet0p, packet1p);
 
 	/* Enable PDC transfer. */
 	pdc_enable_transfer(p_pdc, PERIPH_PTCR_RXTEN);
-	
+
 	/* Enable external pin interrupt too */	
 	pio_get_interrupt_status(PIOA);
 	pio_enable_pin_interrupt(PIO_CAPTURE_EN2_IDX);
 	pio_handler_set(PIOA, ID_PIOA, PIO_CAPTURE_EN2_MASK, PIO_IT_RISE_EDGE, pin_edge_handler);
 	pio_enable_interrupt(PIOA, PIO_CAPTURE_EN2_MASK);
-	
+
 	/* Configure the PIO capture interrupt mask. */
 	pio_capture_enable_interrupt(PIOA, (PIO_PCIER_RXBUFF));
 	

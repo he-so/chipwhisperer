@@ -550,8 +550,8 @@ class CWNano(ScopeTemplate, util.DisableNewAttr):
     _name = "ChipWhisperer Nano"
 
     REQ_ARM = 0x29
-    REQ_SAMPLES = 0x2A
 
+    
     def __init__(self):
         ScopeTemplate.__init__(self)
         self._is_connected = False

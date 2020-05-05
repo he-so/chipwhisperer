@@ -113,6 +113,7 @@ extern uint32_t glitch_width;
 extern uint8_t pio_rx_buffer[SIZE_BUFF_RECEPT];
 
 extern uint32_t capture_req_length;
+extern uint32_t capture_offset_req_length;
 
 
 #endif // _MAIN_H_
